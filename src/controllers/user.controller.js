@@ -1,7 +1,7 @@
 import AsyncHandler from '../utils/AsyncHandler.js';
-import User from '../models/user.model.js';
+import { User } from '../models/user.model.js';
 import ApiError from '../utils/ApiError.js';
-import uploadOnCloudinary from '../utils/Cloudinary.js';
+import { uploadOnCloudinary } from '../utils/Cloudinary.js';
 import ApiResponse from '../utils/ApiResponse.js';
 
 const registerUser = AsyncHandler(async (req, res) => {
@@ -22,7 +22,7 @@ const registerUser = AsyncHandler(async (req, res) => {
         throw new ApiError(400, "All fields are required");
     }
 
-    const existedUser = User.findOne(
+    const existedUser = await User.findOne(
         {
             $or: [ { email }, { username } ]
         }
@@ -32,14 +32,20 @@ const registerUser = AsyncHandler(async (req, res) => {
     }
 
     const avatarLocalPath = req.files?.avatar[0]?.path;
-    const coverImageLocalPath = req.files?.coverImage[0]?.path;
+    let coverImageLocalPath;
+    if(req.files && Array.isArray(req.files.coverImage) && req.files.coverImage.length > 0) {
+        coverImageLocalPath = req.files.coverImage[0].path;
+    }
 
     if(!avatarLocalPath) {
         throw new ApiError(400, "Avatar image is required");
     }
 
     const avatar = await uploadOnCloudinary(avatarLocalPath);
-    const coverImage = await uploadOnCloudinary(coverImageLocalPath);
+    let coverImage;
+    if (coverImageLocalPath) {
+        coverImage = await uploadOnCloudinary(coverImageLocalPath);
+    }
 
     if(!avatar) {
         throw new ApiError(500, "Failed to upload avatar image");
@@ -54,7 +60,7 @@ const registerUser = AsyncHandler(async (req, res) => {
         password
     })
 
-    const createdUser = await User.findbyId(user._id).select(
+    const createdUser = await User.findById(user._id).select(
         "-password -refreshToken"
     );
 
@@ -69,9 +75,20 @@ const registerUser = AsyncHandler(async (req, res) => {
 })
 
 const loginUser = AsyncHandler(async (req, res) => {
-    res.status(200).json({
-        message: "User logged in successfully"
+    const { email, username, password } = req.body;
+    if(!email && !username) {
+        throw new ApiError(400, "Email or username is required");
+    }
+
+    const user = await User.findOne({
+        $or: [{ email }, { username }]
     })
+
+    if(!user) {
+        throw new ApiError(404, "User not found with the provided email or username");
+    }
+
+    const isPasswordValid = await user.isPasswordValid(password);
 })
 
 export {
